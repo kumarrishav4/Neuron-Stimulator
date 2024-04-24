@@ -1,0 +1,90 @@
+// Moore, Joyner, Brill, Waxman, and Najar-Joa. (1978) Simulations of
+// conduction in uniform myelinated fibers: Relative sensitivity to
+// changes in nodal and internodal parameters.
+// Biophys. J. 21:147-160.
+
+// Derived, with very few changes, from the NEURON implementation of the
+// model of
+// Brill, Waxman, Moore, and Joyner. (1977) Conduction velocity and spike
+// configuration in myelinated fibres: Computed dependence on interNodeL distance
+// J. Neurology, Neurosurgery, and Psychiatry. 40: 769-774
+
+create node[1], myelin[1]
+objref nodes, myelins
+
+// topo_and_geom(): creates topology and geometry of myelinated axon.
+// $1: number of nodes (nnode) 
+// $2: outer diameter
+// $3: inner diameter
+proc topo_and_geom() {local i
+	nnode = $1
+	outer_dia = $2
+	inner_dia = $3
+	interNodeL = 100*outer_dia // (length of a myelin section + length of a node)
+	create node[nnode], myelin[nnode-1]
+	nodes = new SectionList()
+	myelins = new SectionList()
+	forsec "node" nodes.append
+	forsec "myelin" myelins.append
+	access node
+	access myelin
+	
+	// creates nodes of ranviers and myelin sections
+	for i=0, nnode-2 {
+		node[i] {
+			pt3dclear() 
+			pt3dadd(int(interNodeL*i+0), 0, 0, 1) 
+			pt3dadd(int(interNodeL*i+1), 0, 0, 1) 
+		}	
+		myelin[i] {
+			pt3dclear() 
+			pt3dadd(int(interNodeL*i+1), 0, 0, 1) 
+			pt3dadd(int(interNodeL*i+interNodeL), 0, 0, 1) 
+		}
+		}
+		node[nnode-1] {
+			pt3dclear() 
+			pt3dadd(int(interNodeL*i+0), 0, 0, 1) 
+			pt3dadd(int(interNodeL*i+1), 0, 0, 1) 
+  	}
+	// connects alternating sequence of node-myelin pairs
+	for i=0, nnode-2 {
+		connect myelin[i](0), node[i](1)		
+		connect node[i+1](0), myelin[i](1)				
+	}
+
+	// define geometry properties
+	forsec nodes {
+		L = 1
+		diam = inner_dia // inner diameter of axon
+		nseg = 1
+	}
+	forsec myelins {
+		L = interNodeL-1
+		diam = inner_dia // inner diameter of axon
+		nseg = 100
+	}
+}
+
+proc biophys() {
+	forall {
+		Ra = 110 
+		insert xtra
+	}
+	forsec nodes {
+		insert fh	
+		cm = 2 // uF/cm2
+		}
+	forsec myelins {
+		insert pas		
+		e_pas = -78
+		g_pas = 1.5e-7 // S/cm2
+		cm = 0.005 // uF/cm2
+	}
+	celsius = 37
+}
+
+proc make_axon() {
+	topo_and_geom($1,$2,$3)
+	biophys()
+}

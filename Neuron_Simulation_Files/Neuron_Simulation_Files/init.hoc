@@ -1,0 +1,10 @@
+load_file("nrngui.hoc")
+load_file("cable.hoc")
+
+make_axon(55,16,10) //Makes an axon. Arguments are: numbers of nodes, outer diamter, inner diameter
+stim_tstop = 5  // msec
+stim_dt = 0.001 //msec
+
+load_file("stimulate.hoc")
+load_file("session.ses")
+run()

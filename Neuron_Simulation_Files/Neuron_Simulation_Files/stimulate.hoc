@@ -1,0 +1,127 @@
+// Read the MATLAB generated files for spatial component (dEdX.txt) and temporal component (dIdt_norm.txt) of induced electric field gradient.
+// dEDX.txt: contains a 1D vector of size (nnodes,1)
+// dIdt_norm.txt: contains a 1D vector of size (tsamples,1). Here tsamples = total_simulation_time/time_resolution
+
+objref f1, f2, dExdX, dIdt
+f1 = new File()
+f2 = new File()
+f1.ropen("dEdX.txt")		// load the spatial component of the stimuation
+f2.ropen("dIdt_norm.txt")	// load the temporal component of the stimuation
+
+dExdX = new Matrix(2*nnode-1,1)// dEx/dX vector. Values for all sections (nodes and myelins sections)
+dIdt = new Matrix(int(stim_tstop/stim_dt)+1,1)	// dI/dt vector
+
+for j = 0, nnode-1 { // all nodes
+    dExdX.x[j][0] = 1*f1.scanvar()	// apply dEx/dX at nodes
+}
+for j = nnode, 2*nnode-2 { // all myelins
+    dExdX.x[j][0] = 0.000			// apply dEx/dX = 0 for myelin
+}
+for j = 0, int(stim_tstop/stim_dt) { 
+    dIdt.x[j][0] = f2.scanvar()
+}
+
+// A function to generate interpolated x-coords
+objref xx, length // original data, irregularly spaced
+objref xint, range // interpolated data, spaced at regular intervals
+proc grindaway() { local ii, nn, xr
+	count = 0
+	forall {
+		count = count + 1
+		//printf("n=%f %f\n",count,nseg)	
+	  	if (ismembrane("xtra")) {
+			nn = n3d()
+			xx = new Vector(nn)
+			length = new Vector(nn)
+			for ii = 0,nn-1 {
+				xx.x[ii] = x3d(ii)
+				//printf("*****ii=%f %f\n",ii,x3d(ii))
+				length.x[ii] = arc3d(ii)
+			}
+			length.div(length.x[nn-1])
+			// initialize the destination "independent" vector
+			range = new Vector(nseg+2)
+			range.indgen(1/nseg)
+			range.sub(1/(2*nseg))
+			range.x[0]=0
+			range.x[nseg+1]=1
+			xint = new Vector(nseg+2)
+			xint.interpolate(range, length, xx)
+			for ii = 1, nseg {
+				xr = range.x[ii]
+				//printf("ii=%f %f\n",ii,xr)
+				DEDX_xtra(xr)=dExdX.x[count-1][0]
+			}		
+		}
+    }
+}
+
+// A function to apply dE/dx (spatial component) to the axon
+proc setrx() { 
+	grindaway()  // determines interpolated locations
+	forall {  
+		for(x){	
+		// convert dE/dx [mV/mm2] to Jm [mA/cm2] as per Anil 2015 paper
+		rx_xtra(x)= (0.6274/0.79)*0.015*(inner_dia/2)*(inner_dia/2)*DEDX_xtra(x)
+		}
+	}
+}
+
+// A function to generate the graph of dI/dt
+objref stim_amp, stim_time, testg
+stim_amp = new Vector()
+stim_time = new Vector()
+testg = new Graph()
+proc create_stim_waveform(){ local i,pstart,pstop,StimDelay,ScaleFactor
+	dt = stim_dt
+	StimDelay = $1
+	tstop = stim_tstop
+	testg.erase()
+	testg.beginline()
+	stim_amp.resize(tstop/dt+1)
+	stim_amp.fill(0)
+	stim_time.resize(tstop/dt+1)
+	stim_time.fill(0)
+	pstart=int(StimDelay/dt)
+	pstop=int((StimDelay+stim_tstop)/dt)
+	ScaleFactor=$2
+	
+	for i=0,int(tstop/dt){
+		stim_time.x[i]=i*dt
+		if(i>pstart && i<pstop) {
+			stim_amp.x[i] = ScaleFactor*dIdt.x[i-pstart-1][0]
+		}
+		testg.line(i*dt,stim_amp.x[i])
+	}
+	testg.size(0,stim_tstop,stim_amp.min(),stim_amp.max())
+	testg.flush()
+}
+
+// A function to apply dI/dt (temporal component) to the axon 
+proc apply_stim() {
+	forall {
+		if (ismembrane("xtra")) {
+			for(x) { 
+			stim_amp.play(&is_xtra(x),dt)
+			}
+		}
+	}
+}
+
+proc setstim() {
+	create_stim_waveform(StimDelay,ScaleFactor)
+	setrx()
+	apply_stim()
+}
+
+// default values for stimulation.  
+StimDelay = 0.5   	// 	[ms]
+ScaleFactor = 1     // 	ScalingFactor[unitless] 
+
+setstim(StimDelay,ScaleFactor)
+
+xpanel("Settings", 0)
+	xvalue("Stim Delay(ms)", "StimDelay", 1, "setstim(StimDelay,ScaleFactor)", 0, 1)
+	xvalue("Scaling Factor", "ScaleFactor", 1, "setstim(StimDelay,ScaleFactor)", 0, 1)
+xpanel(73,497)
+
